@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}个人记账{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f6f8; color: #222; }
+    nav { background: #fff; padding: 12px 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); display: flex; gap: 20px; align-items: center; }
+    nav .brand { font-weight: 700; font-size: 18px; }
+    nav a { color: #555; text-decoration: none; padding: 6px 10px; border-radius: 6px; display: inline-block; }
+    nav a .ico { display: none; }
+    nav a:hover, nav a.active { background: #eef2f7; color: #2b6cb0; }
+    main { max-width: 920px; margin: 24px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .stat-row { display: flex; flex-wrap: wrap; gap: 16px; }
+    .stat { flex: 1; min-width: 140px; padding: 16px; border-radius: 10px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .stat .label { font-size: 13px; color: #888; }
+    .stat .value { font-size: 24px; font-weight: 700; margin-top: 6px; }
+    .income { color: #07c160; }
+    .expense { color: #ff4d4f; }
+    .net { color: #1890ff; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; font-size: 14px; }
+    th { color: #888; font-weight: 600; }
+    form label { display: block; margin-bottom: 14px; font-size: 14px; color: #555; }
+    form label input, form label select { display: block; width: 100%; margin-top: 6px; }
+    input, select { padding: 8px 10px; border: 1px solid #d0d5dd; border-radius: 8px; font-size: 15px; }
+    button { padding: 10px 16px; border: none; border-radius: 8px; background: #1890ff; color: #fff; cursor: pointer; font-size: 15px; }
+    button:hover { opacity: .9; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    .badge-high { background: #e6f7ff; color: #1890ff; }
+    .badge-medium { background: #fff7e6; color: #fa8c16; }
+    .badge-low { background: #f5f5f5; color: #999; }
+    .muted { color: #999; }
+    .error { color: #ff4d4f; }
+    /* 图表容器（响应式） */
+    .chart-wrap { position: relative; width: 100%; max-width: 420px; height: 300px; margin: 0 auto; }
+    /* 去重卡片列表 */
+    .dedup-item { border: 1px solid #eef2f7; border-radius: 12px; padding: 14px; margin-bottom: 12px; background: #fff; }
+    .dedup-head { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .tx-row { padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-src { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 8px; background: #eef2f7; color: #555; margin-right: 6px; vertical-align: middle; }
+    .tx-amt { font-weight: 700; }
+    .dedup-arrow { text-align: center; color: #bbb; font-size: 12px; padding: 4px 0; }
+    .dedup-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .dedup-actions button { flex: 1; }
+
+    /* ── 移动端适配 ── */
+    @media (max-width: 640px) {
+      nav { position: fixed; bottom: 0; left: 0; right: 0; top: auto; padding: 0; gap: 0; box-shadow: 0 -1px 4px rgba(0,0,0,.08); }
+      nav .brand { display: none; }
+      nav a { flex: 1; text-align: center; padding: 8px 4px; font-size: 12px; color: #888; border-radius: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      nav a .ico { display: block; font-size: 20px; line-height: 1; }
+      nav a:hover, nav a.active { background: transparent; color: #1890ff; }
+      main { margin: 16px auto 84px; padding: 0 12px; max-width: 100%; }
+      .card { padding: 16px; border-radius: 12px; }
+      .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .stat { min-width: 0; padding: 14px; }
+      .stat .value { font-size: 20px; }
+      input, select { width: 100%; padding: 12px; }
+      button { width: 100%; padding: 13px; margin-bottom: 8px; }
+      .dedup-actions button { margin-bottom: 0; }
+      /* 表格转卡片 */
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { border: 1px solid #eee; border-radius: 10px; margin-bottom: 10px; padding: 4px; background: #fff; }
+      td { border: none; border-bottom: 1px solid #f5f5f5; padding: 8px 12px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+      td:last-child { border-bottom: none; }
+      td::before { content: attr(data-label); color: #999; font-size: 12px; flex-shrink: 0; }
+      .chart-wrap { height: 260px; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="brand">💰 个人记账</span>
+    <a href="/"><span class="ico">📊</span>报表</a>
+    <a href="/upload"><span class="ico">📤</span>上传</a>
+    <a href="/dedup"><span class="ico">🔀</span>去重</a>
+    <a href="/transactions"><span class="ico">📋</span>明细</a>
+    <a href="/game"><span class="ico">🎴</span>记分</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function(){
+      var path = location.pathname;
+      document.querySelectorAll('nav a').forEach(function(a){
+        var href = a.getAttribute('href');
+        if (href === '/' ? path === '/' : path.indexOf(href) === 0) a.classList.add('active');
+      });
+    })();
+  </script>
+</body>
+</html>

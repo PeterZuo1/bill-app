@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 运行时数据
+data/
+bill_data/
+*.db
+*.db-wal
+*.db-shm
+
+# 环境
+.env
+
+# 截图与临时产物
+.screenshots/
+.trae/
+*.log
+.pytest_cache/
+
+# 编辑器
+.vscode/
+.idea/

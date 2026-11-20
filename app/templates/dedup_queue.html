@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}去重确认{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>待确认去重项</h3>
+  <p id="msg" class="muted">加载中…</p>
+  <div id="list"></div>
+</div>
+<script>
+async function load(){
+  const r = await fetch('/api/dedup/queue');
+  const list = await r.json();
+  const msg = document.getElementById('msg');
+  const box = document.getElementById('list');
+  if (!list || list.length === 0){
+    msg.textContent = '暂无待确认项 🎉 所有跨渠道重复已自动合并或单独保留。';
+    box.innerHTML = '';
+    return;
+  }
+  msg.textContent = '共 ' + list.length + ' 条待确认';
+  box.innerHTML = list.map(c => {
+    const a = c.tx_a, b = c.tx_b;
+    const row = t => `<div class="tx-row">
+      <span class="tx-src">${t.source}</span>
+      <span class="tx-date">${t.date}</span>
+      <span class="tx-amt">¥${t.amount}</span>
+      <div>${t.merchant||'-'}${t.description?' · '+t.description:''}</div>
+    </div>`;
+    return `<div class="dedup-item">
+      <div class="dedup-head">匹配得分 ${c.score} · ${c.reason}</div>
+      ${row(a)}
+      <div class="dedup-arrow">疑似同一笔</div>
+      ${row(b)}
+      <div class="dedup-actions">
+        <button onclick="act(${c.id},'merge')">确认合并</button>
+        <button onclick="act(${c.id},'discard')" style="background:#ff4d4f">不合并</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function act(id, action){
+  await fetch('/api/dedup/' + id + '/' + action, {method:'POST'});
+  load();
+}
+load();
+</script>
+{% endblock %}

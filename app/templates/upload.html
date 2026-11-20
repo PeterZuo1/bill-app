@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}上传账单{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>上传账单</h3>
+  <form onsubmit="return uploadBill(event)">
+    <label>渠道
+      <select name="source">
+        <option value="wechat">微信支付</option>
+        <option value="alipay">支付宝</option>
+        <option value="card">信用卡</option>
+      </select>
+    </label>
+    <label>账单文件
+      <input type="file" name="file" accept=".xlsx,.xls,.csv,.pdf" required>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="force" style="width:auto;margin:0">
+      强制重复导入（忽略文件指纹，谨慎使用）
+    </label>
+    <button type="submit">上传并导入</button>
+    <button type="button" onclick="detectTemplate()" style="background:#888">仅探测列映射</button>
+  </form>
+  <p id="result" class="muted">支持微信 / 支付宝 / 信用卡账单，格式支持 Excel（.xlsx/.xls）、CSV、PDF。首次导入会按常见模板自动列映射，可在下方校准。</p>
+</div>
+<div class="card" id="tmplCard" style="display:none">
+  <h3>列映射探测结果</h3>
+  <pre id="tmpl" style="white-space:pre-wrap; overflow-x:auto"></pre>
+  <p class="muted">探测仅供建议；实际解析使用已保存的 active 模板。如需调整，请在模板接口中修改。</p>
+</div>
+<script>
+async function uploadBill(e){
+  e.preventDefault();
+  const form = e.target;
+  const fileInput = form.elements.file;
+  const source = form.elements.source.value;
+  // 手机浏览器对 new FormData(form) 兼容性差，显式 append 更可靠
+  if (!fileInput.files || !fileInput.files[0]){
+    document.getElementById('result').innerText = '❌ 请先选择账单文件';
+    return false;
+  }
+  const fd = new FormData();
+  fd.append('source', source);
+  fd.append('file', fileInput.files[0]);
+  fd.append('force', form.elements.force.checked ? 'true' : 'false');
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = '导入中…';
+  try {
+    const r = await fetch('/api/bills/upload', {method:'POST', body:fd});
+    const j = await r.json();
+    if (!r.ok) {
+      document.getElementById('result').innerText = '❌ 失败：' + (j.detail || '未知错误');
+    } else if (j.duplicate) {
+      document.getElementById('result').innerText =
+        '⚠️ 该文件已于此前导入过（文件 ID ' + j.file_id + '），已跳过；如需重新导入请勾选「强制重复导入」';
+    } else {
+      document.getElementById('result').innerText =
+        '✅ 导入成功：' + j.rows_imported + ' 行，待确认去重 ' + (j.dedup_candidates||0) + ' 个';
+    }
+  } catch(err){ document.getElementById('result').innerText = '❌ 出错：' + err.message; }
+  btn.disabled = false; btn.textContent = '上传并导入';
+  return false;
+}
+async function detectTemplate(){
+  const form = document.querySelector('form');
+  const f = form.elements.file.files[0];
+  const s = form.elements.source.value;
+  if (!f){ alert('请先选择文件'); return; }
+  const fd = new FormData(); fd.append('source', s); fd.append('file', f);
+  const r = await fetch('/api/templates/detect', {method:'POST', body:fd});
+  const j = await r.json();
+  document.getElementById('tmpl').textContent = r.ok
+    ? JSON.stringify(j.suggested_col_map, null, 2)
+    : ('❌ ' + (j.detail || '无法识别该文件'));
+  document.getElementById('tmplCard').style.display = 'block';
+}
+</script>
+{% endblock %}

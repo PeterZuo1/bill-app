@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}交易明细{% endblock %}
+{% block content %}
+<style>
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 16px; align-items: end; }
+  .filter-grid label { margin-bottom: 0; }
+  .filter-grid .chk { display: flex; align-items: center; gap: 8px; padding-bottom: 9px; white-space: nowrap; }
+  .filter-grid .chk input { width: auto; margin: 0; }
+  .filter-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .filter-actions button { padding: 9px 20px; }
+  button.ghost { background: #eef2f7; color: #475467; }
+  .list-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  .list-head h3 { margin: 0; }
+  .summary { font-size: 13px; color: #667085; }
+  .summary b { color: #344054; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  table td.amt { text-align: right; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table th:nth-child(4) { text-align: right; }
+  .amt-expense { color: #e5484d; }
+  .amt-income, .amt-refund { color: #0a8f4d; }
+  .amt-muted { color: #98a2b3; }
+  .m-name { font-weight: 500; }
+  .m-sub { font-size: 12px; color: #98a2b3; margin-top: 2px; }
+  .src { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
+  .src-wechat { background: #e8f8ef; color: #0a7a3d; }
+  .src-alipay { background: #e8f1ff; color: #1257b8; }
+  .src-card { background: #fff4e6; color: #a85b00; }
+  .src-manual { background: #f4ecff; color: #6b2fb3; }
+  .type { font-size: 13px; }
+  .type-income { color: #0a8f4d; }
+  .type-refund { color: #0a8f4d; }
+  .tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 11px; background: #f2f4f7; color: #667085; }
+  .tag-rep { background: #eef4ff; color: #3538cd; }
+  .badge-independent { background: #f2f4f7; color: #667085; }
+  .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+  .pager .pages { font-size: 13px; color: #667085; }
+  .pager button { padding: 8px 16px; background: #eef2f7; color: #344054; }
+  .pager button:disabled { opacity: .4; cursor: not-allowed; }
+  .legend { font-size: 12px; color: #98a2b3; line-height: 2; margin: 14px 0 0; }
+  .empty { text-align: center; color: #98a2b3; padding: 28px 0; }
+  @media (max-width: 640px) {
+    .filter-actions { flex-direction: column; }
+    .pager button { width: auto; flex: 1; }
+    .pager { justify-content: stretch; }
+    .pager .pages { order: -1; width: 100%; text-align: center; }
+  }
+</style>
+
+<div class="card">
+  <form onsubmit="applyFilters(event)">
+    <div class="filter-grid">
+      <label>月份 <input type="month" id="month"></label>
+      <label>渠道
+        <select id="source">
+          <option value="">全部</option>
+          <option value="wechat">微信</option>
+          <option value="alipay">支付宝</option>
+          <option value="card">信用卡</option>
+        </select>
+      </label>
+      <label>类型
+        <select id="billType">
+          <option value="">全部</option>
+          <option value="consume">消费</option>
+          <option value="income">收入</option>
+          <option value="refund">退款</option>
+          <option value="fee">手续费</option>
+          <option value="transfer">转账/中性</option>
+          <option value="other">其他</option>
+        </select>
+      </label>
+      <label>关键词 <input type="search" id="keyword" placeholder="商户 / 对方 / 摘要"></label>
+      <label>每页
+        <select id="pageSize">
+          <option value="20">20 条</option>
+          <option value="50">50 条</option>
+          <option value="100">100 条</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="primaryOnly"> 仅看代表行</label>
+    </div>
+    <div class="filter-actions">
+      <button type="submit">查询</button>
+      <button type="button" class="ghost" onclick="resetFilters()">重置</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="list-head">
+    <h3>交易明细</h3>
+    <div class="summary" id="summary">加载中…</div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>日期</th><th>渠道</th><th>类型</th><th>金额</th><th>商户</th><th>摘要</th><th>置信</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="pager" id="pager" hidden>
+    <button type="button" id="prevBtn" onclick="goPage(-1)">上一页</button>
+    <span class="pages" id="pageInfo"></span>
+    <button type="button" id="nextBtn" onclick="goPage(1)">下一页</button>
+  </div>
+  <p class="legend">
+    置信说明：<span class="badge badge-independent">独立</span> 未发现跨渠道重复 ·
+    <span class="badge badge-high">高置信</span> 已自动/人工合并 ·
+    <span class="badge badge-medium">待确认</span> 疑似重复待处理 ·
+    <span class="badge badge-low">低置信</span> 建议核对
+  </p>
+</div>
+
+<script>
+const SRC = {
+  wechat: {label:'微信', cls:'src-wechat'},
+  alipay: {label:'支付宝', cls:'src-alipay'},
+  card:   {label:'信用卡', cls:'src-card'},
+  manual: {label:'手动', cls:'src-manual'}
+};
+const TYPES = {consume:'消费', income:'收入', refund:'退款', fee:'手续费', transfer:'转账/中性', other:'其他'};
+const CONF = {independent:'独立', high:'高置信', medium:'待确认', low:'低置信'};
+const CONF_TIP = {
+  independent:'未发现跨渠道重复的独立流水',
+  high:'已自动或人工合并的重复流水',
+  medium:'金额+日期命中但商户名不一致，待人工确认',
+  low:'置信度较低，建议核对'
+};
+let currentPage = 1;
+let totalPages = 1;
+
+function esc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function money(v){
+  const n = Number(v);
+  if (!isFinite(n)) return '¥0.00';
+  return '¥' + n.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function amountClass(t){
+  if (t === 'income' || t === 'refund') return 'amt-income';
+  if (t === 'transfer' || t === 'other') return 'amt-muted';
+  return 'amt-expense';
+}
+
+async function loadTransactions(page){
+  currentPage = Math.max(1, page || 1);
+  const month = document.getElementById('month').value;
+  const source = document.getElementById('source').value;
+  const billType = document.getElementById('billType').value;
+  const keyword = document.getElementById('keyword').value.trim();
+  const pageSize = document.getElementById('pageSize').value;
+  const primaryOnly = document.getElementById('primaryOnly').checked;
+
+  const q = new URLSearchParams();
+  if (month) q.set('month', month);
+  if (source) q.set('source', source);
+  if (billType) q.set('bill_type', billType);
+  if (keyword) q.set('keyword', keyword);
+  if (primaryOnly) q.set('primary_only', 'true');
+  q.set('page', currentPage);
+  q.set('page_size', pageSize);
+
+  const summary = document.getElementById('summary');
+  const tbody = document.getElementById('rows');
+  summary.innerHTML = '加载中…';
+  tbody.innerHTML = '<tr><td colspan="7" class="empty">加载中…</td></tr>';
+
+  let j;
+  try {
+    const r = await fetch('/api/transactions?' + q.toString());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    j = await r.json();
+  } catch (err) {
+    summary.textContent = '加载失败，请稍后重试';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">加载失败：' + esc(err.message) + '</td></tr>';
+    document.getElementById('pager').hidden = true;
+    return;
+  }
+
+  const total = j.total || 0;
+  const size = j.page_size || Number(pageSize);
+  totalPages = Math.max(1, Math.ceil(total / size));
+  if (currentPage > totalPages) { loadTransactions(totalPages); return; }
+
+  summary.innerHTML = '共 <b>' + total + '</b> 笔 · 收入 <b>' + money(j.income_total) +
+                      '</b> · 支出 <b class="expense">' + money(j.expense_total) + '</b>';
+
+  tbody.innerHTML = (j.items || []).map(function(i){
+    const s = SRC[i.source] || {label:i.source, cls:''};
+    const typeLabel = TYPES[i.bill_type] || i.bill_type;
+    const conf = CONF[i.confidence] || i.confidence || '低置信';
+    const tip = CONF_TIP[i.confidence] || '';
+    let mergeTag = '';
+    if (!i.is_primary) mergeTag = '<span class="tag">已并入</span>';
+    else if (i.merged_group_id) mergeTag = '<span class="tag tag-rep">代表行</span>';
+    const sub = (i.counterparty && i.counterparty !== i.merchant)
+      ? '<div class="m-sub">' + esc(i.counterparty) + '</div>' : '';
+    return '<tr>' +
+      '<td data-label="日期">' + esc(i.tx_date) + '</td>' +
+      '<td data-label="渠道"><span class="src ' + s.cls + '">' + esc(s.label) + '</span></td>' +
+      '<td data-label="类型"><span class="type type-' + esc(i.bill_type) + '">' + esc(typeLabel) + '</span>' + mergeTag + '</td>' +
+      '<td data-label="金额" class="amt ' + amountClass(i.bill_type) + '">' + money(i.amount) + '</td>' +
+      '<td data-label="商户"><div class="m-name">' + (esc(i.merchant) || '-') + '</div>' + sub + '</td>' +
+      '<td data-label="摘要">' + (esc(i.description) || '-') + '</td>' +
+      '<td data-label="置信"><span class="badge badge-' + esc(i.confidence || 'low') + '" title="' + esc(tip) + '">' + esc(conf) + '</span></td>' +
+      '</tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">没有符合条件的交易</td></tr>';
+
+  document.getElementById('pager').hidden = total === 0;
+  document.getElementById('pageInfo').textContent = '第 ' + currentPage + ' / ' + totalPages + ' 页';
+  document.getElementById('prevBtn').disabled = currentPage <= 1;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+}
+
+function applyFilters(e){
+  if (e) e.preventDefault();
+  loadTransactions(1);
+}
+function goPage(delta){
+  const next = currentPage + delta;
+  if (next >= 1 && next <= totalPages) loadTransactions(next);
+}
+function resetFilters(){
+  const now = new Date();
+  document.getElementById('month').value =
+    now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  document.getElementById('source').value = '';
+  document.getElementById('billType').value = '';
+  document.getElementById('keyword').value = '';
+  document.getElementById('pageSize').value = '20';
+  document.getElementById('primaryOnly').checked = false;
+  loadTransactions(1);
+}
+
+(function init(){
+  const now = new Date();
+  document.getElementById('month').value =
+    now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  loadTransactions(1);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}月度报表{% endblock %}
+{% block content %}
+<style>
+  .actions-row { display: flex; gap: 8px; margin-top: 12px; }
+  .actions-row button { flex: 1; margin-bottom: 0; }
+  @media (max-width: 640px) {
+    .actions-row { flex-direction: row; }
+    .actions-row button { width: auto; padding: 13px 8px; font-size: 14px; }
+  }
+  .hidden { display: none !important; }
+</style>
+<div class="card">
+  <form method="get" action="/">
+    <label>月份 </label>
+    <input type="month" name="month" value="{{ month }}" onchange="this.form.submit()">
+    <noscript><button type="submit">查看</button></noscript>
+  </form>
+  <div class="actions-row">
+    <button onclick="clearMonth()" style="background:#ff4d4f">清空本月数据</button>
+    <button onclick="toggleManual()">＋ 手动录入</button>
+  </div>
+</div>
+
+<div class="card hidden" id="manualCard">
+  <h3>手动录入</h3>
+  <form onsubmit="manualSubmit(event)">
+    <label>渠道
+      <select name="source">
+        <option value="wechat">微信</option>
+        <option value="alipay">支付宝</option>
+        <option value="card">信用卡</option>
+        <option value="manual">其他</option>
+      </select>
+    </label>
+    <label>类型
+      <select name="bill_type">
+        <option value="consume">消费</option>
+        <option value="income">收入</option>
+        <option value="transfer">转账</option>
+        <option value="refund">退款</option>
+        <option value="fee">手续费</option>
+      </select>
+    </label>
+    <label>金额（元）<input type="number" step="0.01" name="amount" required placeholder="0.00"></label>
+    <label>日期 <input type="date" name="tx_date" value="{{ month }}-01" required></label>
+    <label>商户/摘要 <input type="text" name="merchant" placeholder="如：星巴克"></label>
+    <label>备注 <input type="text" name="description"></label>
+    <button type="submit">保存</button>
+  </form>
+  <p id="manualMsg" class="muted"></p>
+</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="label">收入</div><div class="value income">¥{{ '%.2f' % report.income }}</div></div>
+  <div class="stat"><div class="label">支出</div><div class="value expense">¥{{ '%.2f' % report.expense }}</div></div>
+  <div class="stat"><div class="label">净额</div><div class="value net">¥{{ '%.2f' % report.net }}</div></div>
+  <div class="stat"><div class="label">待确认去重</div><div class="value">{{ report.pending_candidates }}</div></div>
+</div>
+<div class="card">
+  <h3>渠道支出占比</h3>
+  <div class="chart-wrap"><canvas id="chart"></canvas></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const data = {{ report.by_channel | tojson }};
+const labels = Object.keys(data);
+const values = Object.values(data);
+const colors = {'wechat':'#07c160','alipay':'#1677ff','card':'#ff9500','manual':'#722ed1'};
+const c = document.getElementById('chart');
+if (c) new Chart(c, {type:'pie', responsive:true, maintainAspectRatio:false, data:{labels:labels, datasets:[{data:values, backgroundColor: labels.map(l => colors[l] || '#aaa')}]}});
+
+function clearMonth(){
+  if(!confirm('确认清空 '+ {{ month|tojson }} +' 全部账单数据？此操作不可恢复。')) return;
+  fetch('/api/bills/clear-month?month='+encodeURIComponent({{ month|tojson }}), {method:'POST'})
+    .then(r=>r.json())
+    .then(d=>{ alert('已清空 '+d.deleted_tx+' 笔交易，'+d.deleted_files+' 个账单文件'); location.reload(); });
+}
+function toggleManual(){
+  var card=document.getElementById('manualCard');
+  card.classList.toggle('hidden');
+  if(!card.classList.contains('hidden')) card.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+async function manualSubmit(e){
+  e.preventDefault();
+  const form=e.target;
+  const body=Object.fromEntries(new FormData(form).entries());
+  body.amount = parseFloat(body.amount);
+  const r=await fetch('/api/transactions/manual',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json();
+  if(r.ok){ alert('✅ 已录入，待确认去重 '+(j.dedup_candidates||0)+' 个'); location.reload(); }
+  else { document.getElementById('manualMsg').innerText='❌ '+(j.detail||'失败'); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}斗地主记分{% endblock %}
+{% block content %}
+<style>
+  .hidden { display: none !important; }
+  .scoreboard { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .player-card { min-width: 0; }
+  .player-card .label { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-card .value { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .rank-badge { padding: 1px 7px; border-radius: 999px; font-size: 11px; background: #f2f4f7; color: #667085; white-space: nowrap; }
+  .rank-badge.lead { background: #fff7e6; color: #b45309; }
+  .score-pos { color: #0a8f4d; }
+  .score-neg { color: #e5484d; }
+  .score-zero { color: #98a2b3; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .section-head h3 { margin: 0; }
+  .pill-group { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .pill-group .pill { position: relative; margin-bottom: 0; }
+  .pill input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .pill span { display: inline-block; padding: 8px 14px; border: 1px solid #d0d5dd; border-radius: 999px; background: #fff; color: #475467; font-size: 14px; cursor: pointer; }
+  .pill input:checked + span { border-color: #1890ff; background: #e8f1ff; color: #1257b8; font-weight: 600; }
+  .inline-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .check-row { display: flex; align-items: center; gap: 8px; }
+  .check-row input { width: auto; margin: 0; }
+  .preview { background: #f8fafc; border: 1px dashed #dbe3ee; border-radius: 8px; padding: 10px 12px; font-size: 13px; color: #475467; margin-bottom: 14px; }
+  .table-wrap { overflow-x: auto; }
+  td.score { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .link-btn { background: none; color: #e5484d; padding: 2px 6px; width: auto; font-size: 13px; }
+  .actions-row { display: flex; gap: 8px; margin-top: 14px; }
+  .actions-row button { flex: 1; }
+  button.ghost { background: #eef2f7; color: #475467; }
+  button.danger { background: #fff1f0; color: #cf1322; }
+  .empty { text-align: center; color: #98a2b3; padding: 24px 0; }
+  .ok { color: #0a8f4d; }
+  @media (max-width: 640px) {
+    .scoreboard { gap: 8px; }
+    .player-card { padding: 12px 10px; }
+    .player-card .label { font-size: 12px; }
+    .player-card .value { font-size: 19px; }
+    .inline-row { gap: 10px; }
+    .actions-row button { width: auto; margin-bottom: 0; }
+    .link-btn { width: auto; padding: 6px 8px; }
+  }
+</style>
+
+<div class="card hidden" id="setupCard">
+  <h3 id="setupTitle">设置玩家</h3>
+  <p class="muted">填写三个人的名字，之后每局直接记分；修改名字不会清空已有成绩。</p>
+  <form onsubmit="savePlayers(event)">
+    <label>玩家 1 <input id="name0" maxlength="20" required placeholder="如：张三"></label>
+    <label>玩家 2 <input id="name1" maxlength="20" required placeholder="如：李四"></label>
+    <label>玩家 3 <input id="name2" maxlength="20" required placeholder="如：王五"></label>
+    <div class="actions-row">
+      <button type="submit">保存玩家</button>
+      <button type="button" class="ghost hidden" id="cancelEdit" onclick="cancelEdit()">取消</button>
+    </div>
+  </form>
+  <p id="setupMsg" class="error"></p>
+</div>
+
+<div class="hidden" id="gameMain">
+  <div class="scoreboard" id="scoreboard"></div>
+
+  <div class="card">
+    <div class="section-head">
+      <h3>记一局</h3>
+      <span class="muted" id="roundHint"></span>
+    </div>
+    <form id="scoreForm" onsubmit="addRound(event)">
+      <label>本局地主</label>
+      <div class="pill-group" id="landlordPills"></div>
+      <div class="inline-row">
+        <label>底分 <input id="baseScore" type="number" min="1" step="1" value="1" required></label>
+        <label>倍数 <input id="multiplier" type="number" min="1" step="1" value="1" required></label>
+      </div>
+      <label>结果</label>
+      <div class="pill-group">
+        <label class="pill"><input type="radio" name="result" value="win" checked><span>地主赢</span></label>
+        <label class="pill"><input type="radio" name="result" value="lose"><span>地主输</span></label>
+      </div>
+      <label class="check-row"><input type="checkbox" id="spring"> 春天（倍数自动 ×2）</label>
+      <div class="preview" id="preview"></div>
+      <p id="roundMsg"></p>
+      <button type="submit" id="addBtn">记下这一局</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-head">
+      <h3>历史记录</h3>
+      <span class="muted" id="roundCount"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead id="historyHead"></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+    <div class="actions-row">
+      <button type="button" class="ghost" onclick="showEdit()">修改玩家名字</button>
+      <button type="button" class="danger" onclick="clearScores()">清空本桌成绩</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = {configured: false, players: [], totals: [0, 0, 0], round_count: 0, leader: null, rounds: []};
+let editing = false;
+let lastLandlord = 0;
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function fmtScore(v) {
+  const n = Number(v) || 0;
+  return n > 0 ? '+' + n : String(n);
+}
+function scoreClass(v) {
+  return v > 0 ? 'score-pos' : (v < 0 ? 'score-neg' : 'score-zero');
+}
+async function api(path, options) {
+  const r = await fetch(path, Object.assign({headers: {'Content-Type': 'application/json'}}, options || {}));
+  let j = {};
+  try { j = await r.json(); } catch (e) { j = {}; }
+  if (!r.ok) throw new Error(j.detail || ('请求失败 HTTP ' + r.status));
+  return j;
+}
+function msg(id, text, ok) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.className = ok ? 'ok' : 'error';
+}
+
+async function loadState() {
+  try {
+    render(await api('/api/game/state'));
+  } catch (e) {
+    msg('roundMsg', '加载失败：' + e.message, false);
+  }
+}
+
+function render(s) {
+  state = s;
+  const setup = document.getElementById('setupCard');
+  const main = document.getElementById('gameMain');
+
+  if (!s.configured) {
+    main.classList.add('hidden');
+    editing = true;
+    showSetup(false);
+    fillNames([]);
+    return;
+  }
+  if (!editing) setup.classList.add('hidden');
+  main.classList.remove('hidden');
+
+  renderScoreboard();
+  renderLandlordPills();
+  renderHistory();
+  document.getElementById('roundHint').textContent = '已记 ' + s.round_count + ' 局';
+  document.getElementById('roundCount').textContent = '共 ' + s.round_count + ' 局';
+  document.getElementById('spring').checked = false;
+  updatePreview();
+}
+
+function renderScoreboard() {
+  const totals = state.totals || [0, 0, 0];
+  const best = Math.max.apply(null, totals.concat([0]));
+  document.getElementById('scoreboard').innerHTML = state.players.map(function(name, i) {
+    const t = totals[i] || 0;
+    const rank = 1 + totals.filter(function(v) { return v > t; }).length;
+    const badge = state.round_count > 0
+      ? (t === best ? '<span class="rank-badge lead">领先</span>' : '<span class="rank-badge">第 ' + rank + ' 名</span>')
+      : '';
+    return '<div class="stat player-card">' +
+      '<div class="label">' + esc(name) + badge + '</div>' +
+      '<div class="value ' + scoreClass(t) + '">' + fmtScore(t) + '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function renderLandlordPills() {
+  const idx = (lastLandlord >= 0 && lastLandlord < state.players.length) ? lastLandlord : 0;
+  document.getElementById('landlordPills').innerHTML = state.players.map(function(name, i) {
+    return '<label class="pill"><input type="radio" name="landlord" value="' + i + '"' +
+      (i === idx ? ' checked' : '') + '><span>' + esc(name) + '</span></label>';
+  }).join('');
+}
+
+function renderHistory() {
+  const players = state.players || [];
+  const head = ['<tr><th>局号</th><th>地主</th><th>底分×倍数</th><th>结果</th>']
+    .concat(players.map(function(n) { return '<th>' + esc(n) + '</th>'; }))
+    .concat(['<th>操作</th></tr>']);
+  document.getElementById('historyHead').innerHTML = head.join('');
+
+  if (!state.rounds || !state.rounds.length) {
+    document.getElementById('historyBody').innerHTML =
+      '<tr><td colspan="' + (players.length + 5) + '" class="empty">还没有记分，来第一局吧</td></tr>';
+    return;
+  }
+  document.getElementById('historyBody').innerHTML = state.rounds.map(function(r) {
+    const scoreCells = r.scores.map(function(v, i) {
+      return '<td data-label="' + esc(players[i] || ('玩家' + (i + 1))) + '" class="score ' + scoreClass(v) + '">' + fmtScore(v) + '</td>';
+    }).join('');
+    const mult = r.base_score + ' × ' + r.multiplier + (r.spring ? ' <span class="badge badge-medium">春天</span>' : '');
+    return '<tr>' +
+      '<td data-label="局号">第 ' + r.round_no + ' 局</td>' +
+      '<td data-label="地主">' + esc(r.landlord_name) + '</td>' +
+      '<td data-label="底分×倍数">' + mult + '</td>' +
+      '<td data-label="结果">' + (r.landlord_win ? '<span class="score-pos">地主赢</span>' : '<span class="score-neg">地主输</span>') + '</td>' +
+      scoreCells +
+      '<td data-label="操作"><button type="button" class="link-btn" onclick="removeRound(' + r.id + ', ' + r.round_no + ')">删除</button></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function readForm() {
+  const landlordEl = document.querySelector('input[name="landlord"]:checked');
+  const resultEl = document.querySelector('input[name="result"]:checked');
+  const base = parseInt(document.getElementById('baseScore').value, 10);
+  const mult = parseInt(document.getElementById('multiplier').value, 10);
+  return {
+    landlord: landlordEl ? parseInt(landlordEl.value, 10) : 0,
+    base_score: base,
+    multiplier: mult,
+    landlord_win: !resultEl || resultEl.value === 'win',
+    spring: document.getElementById('spring').checked
+  };
+}
+
+function calcPreview(p) {
+  if (!(p.base_score >= 1) || !(p.multiplier >= 1)) return null;
+  const unit = p.base_score * p.multiplier * (p.spring ? 2 : 1);
+  let scores = [-unit, -unit, -unit];
+  if (p.landlord_win) scores[p.landlord] = unit * 2;
+  else { scores = [unit, unit, unit]; scores[p.landlord] = -unit * 2; }
+  return scores;
+}
+
+function updatePreview() {
+  if (!state.configured) return;
+  const p = readForm();
+  const scores = calcPreview(p);
+  const el = document.getElementById('preview');
+  if (!scores) { el.textContent = '请输入大于等于 1 的底分和倍数'; return; }
+  el.innerHTML = '本局预览：' + state.players.map(function(name, i) {
+    return esc(name) + ' <b class="' + scoreClass(scores[i]) + '">' + fmtScore(scores[i]) + '</b>';
+  }).join('　');
+}
+
+function fillNames(names) {
+  for (let i = 0; i < 3; i++) {
+    document.getElementById('name' + i).value = names[i] || '';
+  }
+}
+function showSetup(isEdit) {
+  document.getElementById('setupCard').classList.remove('hidden');
+  document.getElementById('setupTitle').textContent = isEdit ? '修改玩家名字' : '设置玩家';
+  document.getElementById('cancelEdit').classList.toggle('hidden', !isEdit);
+  fillNames(state.players || []);
+  msg('setupMsg', '', false);
+}
+function showEdit() {
+  editing = true;
+  showSetup(true);
+  document.getElementById('setupCard').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+function cancelEdit() {
+  editing = false;
+  document.getElementById('setupCard').classList.add('hidden');
+}
+
+async function savePlayers(e) {
+  e.preventDefault();
+  const names = [0, 1, 2].map(function(i) { return document.getElementById('name' + i).value.trim(); });
+  if (names.some(function(n) { return !n; })) { msg('setupMsg', '三个名字都要填写', false); return; }
+  if (new Set(names).size !== 3) { msg('setupMsg', '三个名字不能重复', false); return; }
+  try {
+    const s = await api('/api/game/players', {method: 'PUT', body: JSON.stringify({players: names})});
+    editing = false;
+    document.getElementById('setupCard').classList.add('hidden');
+    render(s);
+  } catch (err) {
+    msg('setupMsg', err.message, false);
+  }
+}
+
+async function addRound(e) {
+  e.preventDefault();
+  if (!state.configured) return;
+  const p = readForm();
+  if (!(p.base_score >= 1) || !(p.multiplier >= 1)) {
+    msg('roundMsg', '底分和倍数必须是大于等于 1 的整数', false);
+    return;
+  }
+  const btn = document.getElementById('addBtn');
+  btn.disabled = true;
+  try {
+    const s = await api('/api/game/rounds', {method: 'POST', body: JSON.stringify(p)});
+    lastLandlord = p.landlord;
+    render(s);
+    msg('roundMsg', '已记下第 ' + s.round_count + ' 局', true);
+  } catch (err) {
+    msg('roundMsg', err.message, false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function removeRound(id, no) {
+  if (!confirm('删除第 ' + no + ' 局？后面的局号会自动重排。')) return;
+  try {
+    render(await api('/api/game/rounds/' + id, {method: 'DELETE'}));
+    msg('roundMsg', '已删除第 ' + no + ' 局', true);
+  } catch (err) {
+    msg('roundMsg', '删除失败：' + err.message, false);
+  }
+}
+
+async function clearScores() {
+  if (!confirm('确认清空本桌全部成绩？玩家名字会保留。')) return;
+  try {
+    render(await api('/api/game/clear', {method: 'POST'}));
+    msg('roundMsg', '已清空本桌成绩', true);
+  } catch (err) {
+    msg('roundMsg', '清空失败：' + err.message, false);
+  }
+}
+
+document.getElementById('scoreForm').addEventListener('input', updatePreview);
+document.getElementById('scoreForm').addEventListener('change', updatePreview);
+loadState();
+</script>
+{% endblock %}
