@@ -75,7 +75,7 @@ class Transaction(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=True)          # 是否代表行（聚合只计代表）
     merged_group_id: Mapped[int] = mapped_column(
         ForeignKey("merge_group.id"), nullable=True, index=True)
-    confidence: Mapped[str] = mapped_column(String(8), default="independent")  # high/medium/low/independent
+    confidence: Mapped[str] = mapped_column(String(16), default="independent")  # high/medium/low/independent
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     file: Mapped["BillFile"] = relationship(back_populates="transactions")

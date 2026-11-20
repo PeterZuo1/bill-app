@@ -49,18 +49,38 @@ _ADDED_COLUMNS = {
     },
 }
 
+# 旧库列宽不足时的扩宽（create_all 同样不会修改已有列的类型）
+_WIDENED_COLUMNS = {
+    "transaction": {
+        # confidence 会存 "independent"（11 字符），旧表只有 VARCHAR(8)
+        "confidence": ("VARCHAR(16)", 16),
+    },
+}
+
 
 def ensure_schema() -> None:
-    """启动时补齐新增列，兼容已导入过的旧数据库。"""
-    if not DATABASE_URL.startswith("sqlite"):
-        return
+    """启动时补齐新增列、扩宽过窄的列，兼容已存在的旧数据库。"""
     insp = inspect(engine)
     tables = set(insp.get_table_names())
+    is_sqlite = DATABASE_URL.startswith("sqlite")
     with engine.begin() as conn:
-        for table, columns in _ADDED_COLUMNS.items():
-            if table not in tables:
-                continue
-            existing = {c["name"] for c in insp.get_columns(table)}
-            for name, ddl in columns.items():
-                if name not in existing:
-                    conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {ddl}'))
+        if is_sqlite:
+            for table, columns in _ADDED_COLUMNS.items():
+                if table not in tables:
+                    continue
+                existing = {c["name"] for c in insp.get_columns(table)}
+                for name, ddl in columns.items():
+                    if name not in existing:
+                        conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {ddl}'))
+        else:
+            for table, columns in _WIDENED_COLUMNS.items():
+                if table not in tables:
+                    continue
+                existing = {c["name"]: c for c in insp.get_columns(table)}
+                for name, (ddl, min_length) in columns.items():
+                    col = existing.get(name)
+                    if col is None:
+                        continue
+                    if (getattr(col["type"], "length", None) or 0) < min_length:
+                        conn.execute(
+                            text(f'ALTER TABLE "{table}" ALTER COLUMN "{name}" TYPE {ddl}'))
