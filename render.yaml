@@ -13,7 +13,7 @@ services:
     region: oregon
     repo: https://github.com/PeterZuo1/bill-app
     branch: master
-    autoDeploy: false
+    autoDeploy: true
     healthCheckPath: /
     envVars:
       - key: DATABASE_URL
