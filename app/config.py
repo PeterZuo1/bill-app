@@ -16,6 +16,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/bill.db")
 # Render/Heroku 等平台提供的连接串可能是 postgres://，SQLAlchemy 2.0 需要 postgresql://
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
+# 显式指定 psycopg3 驱动，避免因驱动未安装导致启动失败
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len("postgresql://"):]
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
 UPLOAD_MAX_MB = int(os.getenv("UPLOAD_MAX_MB", "10"))
